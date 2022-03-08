@@ -13,42 +13,39 @@ class Block(nn.Module):
     """A basic block used to build ResNet."""
 
     def __init__(self, num_channels):
-        """Initialize a building block for ResNet.
-
-        Argument:
-            num_channels: the number of channels of the input to Block, and is also
-                          the number of channels of conv layers of Block. It is the
-                          parameter C in the handout hw3.pdf.
-        """
+       
         super(Block, self).__init__()
-        """
-        Write your code here.
-        """
-        
+        self.conv2d_layer = nn.Conv2d(num_channels, num_channels, (3, 3), 1, 1, bias=False)
+        self.batchnorm_layer = nn.BatchNorm2d(num_channels)
+        self.relu_layer = nn.ReLU()
+        self.conv2d_layer2 = nn.Conv2d(num_channels, num_channels, (3, 3), 1, 1, bias=False)
+        self.batchnorm_layer2 = nn.BatchNorm2d(num_channels)
 
     def forward(self, x):
-        """
-        The input will have shape (N, num_channels, H, W),
-        where N is the batch size, and H and W give the shape of each channel.
-
-        The output should have the same shape as input.
-        """
-        pass
+        
+        f = self.conv2d_layer(x)
+        f = self.batchnorm_layer(f)
+        f = self.relu_layer(f)
+        f = self.conv2d_layer2(f)
+        f = self.batchnorm_layer2(f)
+        return self.relu_layer(x + f)
 
 
 class ResNet(nn.Module):
     """A simplified ResNet."""
 
     def __init__(self, num_channels, num_classes=10):
-        """Initialize a shallow ResNet.
-
-        Arguments:
-            num_channels: the number of output channels of the conv layer
-                          before the building block, and also 
-                          the number of channels of the building block.
-            num_classes: the number of output units.
-        """
+        
         super(ResNet, self).__init__()
+
+        self.conv2d_layer1 = nn.Conv2d(1, num_channels, (3, 3), 2, 1, bias=False)
+        self.batchnorm_layer1 = nn.BatchNorm2d(num_channels)
+        self.relu_layer = nn.ReLU()
+        self.maxpool_layer = nn.MaxPool2d((2, 2))
+        self.block_layer = Block(num_channels)
+        self.adaptive_avg_layer = nn.AdaptiveAvgPool2d(1)
+        self.linear_layer = nn.Linear(num_channels, num_classes)
+
 
     def forward(self, x):
         """
@@ -57,22 +54,20 @@ class ResNet(nn.Module):
 
         The output should have shape (N, 10).
         """
-        pass
+        
+        f = self.conv2d_layer1(x)
+        f = self.batchnorm_layer1(f)
+        f = self.relu_layer(f)
+        f = self.maxpool_layer(f)
+        f = self.block_layer.forward(f)
+        f = self.adaptive_avg_layer(f)
+        f = f.view(f.size(dim=0), -1)
+        f = self.linear_layer(f)
+        return f
         
         
         
 def plot_resnet_loss_1():
-    """
-    Train ResNet with different parameters C on digits data and draw the training
-    error vs the test error curve. To make your life easier, we provide you with the
-    starter code to load the digits data and draw the figures with different
-    parameters C. You do not need to modify the starter code (but you can if you want)
-    and you only need to implement the training part. Train your algorithms for
-    4000 epochs using SGD with mini batch size = 128 and step size 0.1.
-    Notice that in the starter code, we have selected the mini batch data for you.
-    
-    Updated in version 1.1: speficy to use SGD.
-    """
     
     sk_digits = sklearn.datasets.load_digits()
     (X, Y) = (torch.tensor(sk_digits.data).type(torch.float), torch.tensor(sk_digits.target))
@@ -85,7 +80,6 @@ def plot_resnet_loss_1():
     (X, Y) = ({'tr': X[perm[:n//2], ...], 'te': X[perm[n//2:], ...]}, {'tr':Y[perm[:n//2]], 'te':Y[perm[n//2:]]})
     mb_sz = 128
     stepsize = 0.1
-
     for (_, (net_s, num_channels)) in enumerate([
         ('ResNet_1', 1),
         ('ResNet_2', 2),
@@ -93,15 +87,18 @@ def plot_resnet_loss_1():
     ]):
         losses = { 'tr' : [], 'te' : [] }
         net =  ResNet(num_channels)
+        optimizer = torch.optim.Adam(net.parameters())
         for i in range(4000):
             idxs = random.sample(range(X['tr'].shape[0]), mb_sz)
             (x, y) = (X['tr'][idxs, ...], Y['tr'][idxs])
             x = x.view(x.shape[0], 1, 8, 8)
-            
-            """
-            Write your code here.
-            """
-            
+
+            net.zero_grad()
+            yhat = net(x)
+            loss = torch.nn.CrossEntropyLoss()(yhat, y)
+            loss.backward()
+            optimizer.step()
+   
             with torch.no_grad():
                 if (i + 1) % 25 == 0:
                     x = X['te']
@@ -125,18 +122,7 @@ def plot_resnet_loss_1():
 
 
 def plot_resnet_loss_2():
-    """
-    Train ResNet with parameter C = 64 on digits data and draw the training
-    error vs the test error curve. To make your life easier, we provide you with the
-    starter code to load the digits data and draw the figures with C = 64.
-    You do not need to modify the starter code (but you can if you want) and you only
-    need to implement the training part. Train your algorithms for 4000 epochs
-    using SGD with mini batch size = 128 and step size 0.1. Notice that in the
-    starter code, we have selected the mini batch data for you.
-    
-    Updated in version 1.1: speficy to use SGD.
-    """
-    
+   
     sk_digits = sklearn.datasets.load_digits()
     (X, Y) = (torch.tensor(sk_digits.data).type(torch.float), torch.tensor(sk_digits.target))
     Y = Y.type(torch.LongTensor)
@@ -148,20 +134,23 @@ def plot_resnet_loss_2():
     (X, Y) = ({'tr': X[perm[:n//2], ...], 'te': X[perm[n//2:], ...]}, {'tr':Y[perm[:n//2]], 'te':Y[perm[n//2:]]})
     mb_sz = 128
     stepsize = 0.1
-
     for (_, (net_s, num_channels)) in enumerate([
         ('ResNet_64', 64),
     ]):
         losses = { 'tr' : [], 'te' : [] }
         net =  ResNet(num_channels)
+        optimizer = torch.optim.Adam(net.parameters())
         for i in range(4000):
             idxs = random.sample(range(X['tr'].shape[0]), mb_sz)
             (x, y) = (X['tr'][idxs, ...], Y['tr'][idxs])
             x = x.view(x.shape[0], 1, 8, 8)
             
-            """
-            Write your code here.
-            """
+            net.zero_grad()
+            yhat = net(x)
+            loss = torch.nn.CrossEntropyLoss()(yhat, y)
+            loss.backward()
+            optimizer.step()
+
             
             with torch.no_grad():
                 if (i + 1) % 25 == 0:
